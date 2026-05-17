@@ -1,4 +1,4 @@
-package org.chatterjay.emibridge_if.adapter;
+package com.chatterjay.emibridge_if.adapter;
 
 import com.buuz135.industrial.api.recipe.ore.OreFluidEntryFermenter;
 import com.buuz135.industrial.api.recipe.ore.OreFluidEntryRaw;
@@ -9,18 +9,21 @@ import com.buuz135.industrial.plugin.jei.category.BioReactorRecipeCategory;
 import com.buuz135.industrial.plugin.jei.machineproduce.MachineProduceWrapper;
 import com.buuz135.industrial.recipe.*;
 import com.buuz135.industrial.recipe.data.EntityData;
+import com.chatterjay.emibridge.adapter.EmiBridgeAdapter;
+import com.chatterjay.emibridge.adapter.IRecipeAdapter;
+import com.chatterjay.emibridge.ir.*;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.neoforged.neoforge.common.crafting.SizedIngredient;
 import net.neoforged.neoforge.fluids.FluidStack;
-import org.chatterjay.emibridge.api.IRecipeAdapter;
-import org.chatterjay.emibridge.api.RecipeIR;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
+@EmiBridgeAdapter(modId = "industrialforegoing", priority = 100)
 public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
     private static final Logger LOGGER = LoggerFactory.getLogger("EmiBridge/IF/Adapter");
 
@@ -38,9 +41,9 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
                 "industrialforegoing:laser_fluid",
                 "industrialforegoing:fluid_extractor",
                 "industrialforegoing:dissolution",
-                "industrialforegoing:fermentation_station",
-                "industrialforegoing:washing_factory",
-                "industrialforegoing:fluid_sieving_machine",
+                "industrialforegoing:fermenter",
+                "industrialforegoing:ore_washer",
+                "industrialforegoing:ore_sieve",
                 "industrialforegoing:bioreactor",
                 "industrialforegoing:stone_work",
                 "industrialforegoing:stone_work_generator",
@@ -72,11 +75,11 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
                         translateFluidExtractor((FluidExtractorRecipe) jeiRecipe);
                 case "industrialforegoing:dissolution" ->
                         translateDissolution((DissolutionChamberRecipe) jeiRecipe);
-                case "industrialforegoing:fermentation_station" ->
+                case "industrialforegoing:fermenter" ->
                         translateFermenter((OreFluidEntryFermenter) jeiRecipe);
-                case "industrialforegoing:washing_factory" ->
+                case "industrialforegoing:ore_washer" ->
                         translateOreWasher((OreFluidEntryRaw) jeiRecipe);
-                case "industrialforegoing:fluid_sieving_machine" ->
+                case "industrialforegoing:ore_sieve" ->
                         translateFluidSieve((OreFluidEntrySieve) jeiRecipe);
                 case "industrialforegoing:bioreactor" ->
                         translateBioReactor((BioReactorRecipeCategory.ReactorRecipeWrapper) jeiRecipe);
@@ -89,17 +92,16 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
                 default -> null;
             };
         } catch (Exception e) {
-            LOGGER.error("translate: exception in category {} for recipe {}: {}", categoryId, jeiRecipe, e.getMessage());
+            LOGGER.error("translate: exception in category {}: {}", categoryId, e.getMessage());
             return null;
         }
+
         if (result != null) {
             LOGGER.debug("translate: category={} -> id={}, {} inputs, {} outputs, {} catalysts, {} fluidIn, {} fluidOut",
                     categoryId, result.getId(),
                     result.getInputs().size(), result.getOutputs().size(),
                     result.getCatalysts().size(),
                     result.getFluidInputs().size(), result.getFluidOutputs().size());
-        } else {
-            LOGGER.debug("translate: category={} -> null (recipe not translated)", categoryId);
         }
         return result;
     }
@@ -112,6 +114,13 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
         addCatalyst(builder, "laser_drill");
         addIngredientInput(builder, recipe.catalyst);
         addSizedIngredientOutput(builder, recipe.output);
+        var items = recipe.output.ingredient().getItems();
+        if (items.length > 0) {
+            builder.displayNameTranslationKey("recipe.emibridge_if.laser_ore",
+                    List.of(items[0].getDescriptionId()));
+        } else {
+            builder.displayName("Laser Drill");
+        }
         addRarityWidgets(builder, recipe.rarity);
         addEntityWidget(builder, recipe.entityData);
         return builder.build();
@@ -124,8 +133,19 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
         addCatalyst(builder, "fluid_laser_base");
         addCatalyst(builder, "laser_drill");
         addIngredientInput(builder, recipe.catalyst);
-
         addSizedFluidOutput(builder, recipe.output);
+
+        if (recipe.output != null && !recipe.output.ingredient().isEmpty()) {
+            var stacks = recipe.output.getFluids();
+            if (stacks != null && stacks.length > 0 && !stacks[0].isEmpty()) {
+                builder.displayNameTranslationKey("recipe.emibridge_if.laser_fluid",
+                        List.of(stacks[0].getFluid().getFluidType().getDescriptionId()));
+            } else {
+                builder.displayName("Laser Drill");
+            }
+        } else {
+            builder.displayName("Laser Drill");
+        }
 
         addRarityWidgets(builder, recipe.rarity);
         addEntityWidget(builder, recipe.entityData);
@@ -139,6 +159,19 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
         addCatalyst(builder, "fluid_extractor");
         addIngredientInput(builder, recipe.input);
 
+        if (!recipe.output.isEmpty()) {
+            var logItems = recipe.input.getItems();
+            if (logItems.length > 0) {
+                builder.displayNameTranslationKey("recipe.emibridge_if.fluid_extractor",
+                        List.of(
+                                recipe.output.getFluid().getFluidType().getDescriptionId(),
+                                logItems[0].getDescriptionId()));
+            } else {
+                builder.displayNameTranslationKey("recipe.emibridge_if.fluid_extractor",
+                        List.of(recipe.output.getFluid().getFluidType().getDescriptionId()));
+            }
+        }
+
         var resultItem = new ItemStack(recipe.result.getBlock());
         if (!resultItem.isEmpty()) {
             builder.addOutput(toSlot(resultItem));
@@ -148,13 +181,13 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
             addFluidOutput(builder, recipe.output);
         }
 
-        builder.addWidget(new RecipeIR.WidgetDescriptor(
-                RecipeIR.WidgetType.TEXT, 0, 60, 100, 10,
+        builder.addWidget(new WidgetDescriptor(
+                WidgetType.TEXT, 0, 60, 100, 10,
                 Map.of("text", recipe.output.getAmount() + " mB/tick", "color", 0xAAAAAA)));
 
         if (recipe.outputsLatex()) {
-            builder.addWidget(new RecipeIR.WidgetDescriptor(
-                    RecipeIR.WidgetType.TEXT, 0, 72, 110, 10,
+            builder.addWidget(new WidgetDescriptor(
+                    WidgetType.TEXT, 0, 72, 110, 10,
                     Map.of("text", "Tripled when powered", "color", 0x55CCCC)));
         }
 
@@ -173,6 +206,16 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
 
         addSizedFluidInput(builder, recipe.inputFluid);
 
+        if (recipe.output.isPresent()) {
+            builder.displayNameTranslationKey("recipe.emibridge_if.dissolution",
+                    List.of(recipe.output.get().getDescriptionId()));
+        } else if (recipe.outputFluid.isPresent()) {
+            builder.displayNameTranslationKey("recipe.emibridge_if.dissolution",
+                    List.of(recipe.outputFluid.get().getFluid().getFluidType().getDescriptionId()));
+        } else {
+            builder.displayName("Dissolution");
+        }
+
         recipe.output.ifPresent(stack -> builder.addOutput(toSlot(stack)));
         recipe.outputFluid.ifPresent(fluid -> addFluidOutput(builder, fluid));
 
@@ -180,11 +223,11 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
         builder.energyCost(energy);
         builder.duration(recipe.processingTime);
 
-        builder.addWidget(new RecipeIR.WidgetDescriptor(
-                RecipeIR.WidgetType.ENERGY_BAR, 0, 12, 14, 48,
+        builder.addWidget(new WidgetDescriptor(
+                WidgetType.ENERGY_BAR, 0, 12, 14, 48,
                 Map.of("energy", energy)));
-        builder.addWidget(new RecipeIR.WidgetDescriptor(
-                RecipeIR.WidgetType.PROGRESS_ARROW, 92, 33, 24, 17,
+        builder.addWidget(new WidgetDescriptor(
+                WidgetType.PROGRESS_ARROW, 92, 33, 24, 17,
                 Map.of("time", recipe.processingTime)));
 
         return builder.build();
@@ -198,6 +241,14 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
                 .id("industrialforegoing:/fermentation_station/" + hasher)
                 .sourceMod(MOD_ID)
                 .categoryKey("industrialforegoing:fermentation_station");
+        if (!recipe.getInput().isEmpty() && !recipe.getOutput().isEmpty()) {
+            builder.displayNameTranslationKey("recipe.emibridge_if.fermenter",
+                    List.of(
+                            recipe.getOutput().getFluid().getFluidType().getDescriptionId(),
+                            recipe.getInput().getFluid().getFluidType().getDescriptionId()));
+        } else {
+            builder.displayName("Fermentation");
+        }
         addCatalyst(builder, "fermentation_station");
         addFluidInput(builder, recipe.getInput());
         addFluidOutput(builder, recipe.getOutput());
@@ -212,6 +263,14 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
                 .id("industrialforegoing:/washing_factory/" + hasher)
                 .sourceMod(MOD_ID)
                 .categoryKey("industrialforegoing:washing_factory");
+        var optItem = BuiltInRegistries.ITEM.getTag(recipe.getOre())
+                .flatMap(tag -> tag.stream().findFirst())
+                .map(holder -> holder.value().getDescriptionId());
+        if (optItem.isPresent()) {
+            builder.displayNameTranslationKey("recipe.emibridge_if.ore_washer", List.of(optItem.get()));
+        } else {
+            builder.displayName("Wash: " + recipe.getOre().location().getPath().replace("raw_materials/", ""));
+        }
         addCatalyst(builder, "washing_factory");
         addTagInput(builder, recipe.getOre().location());
         addFluidInput(builder, recipe.getInput());
@@ -227,6 +286,8 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
                 .id("industrialforegoing:/fluid_sieving_machine/" + hasher)
                 .sourceMod(MOD_ID)
                 .categoryKey("industrialforegoing:fluid_sieving_machine");
+        builder.displayNameTranslationKey("recipe.emibridge_if.ore_sieve",
+                List.of(recipe.getOutput().getDescriptionId()));
         addCatalyst(builder, "fluid_sieving_machine");
         addFluidInput(builder, recipe.getInput());
         addTagInput(builder, recipe.getSieveItem().location());
@@ -238,6 +299,12 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
 
     private RecipeIR translateBioReactor(BioReactorRecipeCategory.ReactorRecipeWrapper recipe) {
         var builder = baseBuilder("bioreactor", recipe);
+        if (!recipe.getFluid().isEmpty()) {
+            builder.displayNameTranslationKey("recipe.emibridge_if.bioreactor",
+                    List.of(recipe.getFluid().getFluid().getFluidType().getDescriptionId()));
+        } else {
+            builder.displayName("Bio Reactor");
+        }
         addCatalyst(builder, "bioreactor");
         addTagInput(builder, recipe.getStack().location());
         addFluidOutput(builder, recipe.getFluid());
@@ -248,13 +315,15 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
 
     private RecipeIR translateStoneWork(StoneWorkWrapper recipe) {
         var builder = baseBuilder("stone_work", recipe);
+        builder.displayNameTranslationKey("recipe.emibridge_if.stone_work",
+                List.of(recipe.output().getDescriptionId()));
         addCatalyst(builder, "material_stonework_factory");
         builder.addInput(toSlot(recipe.input()));
 
         for (var mode : recipe.modes()) {
             var wrapper = toWrapper(mode.getIcon());
             if (wrapper != null) {
-                builder.addCatalyst(new RecipeIR.IngredientSlot(List.of(wrapper)));
+                builder.addCatalyst(new IngredientSlot(List.of(wrapper)));
             }
         }
 
@@ -266,14 +335,16 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
 
     private RecipeIR translateStoneWorkGenerator(StoneWorkGenerateRecipe recipe) {
         var builder = baseBuilder("stone_work_generator", recipe);
+        builder.displayNameTranslationKey("recipe.emibridge_if.stone_work_generator",
+                List.of(recipe.output.getDescriptionId()));
         addCatalyst(builder, "material_stonework_factory");
         builder.addOutput(toSlot(recipe.output));
 
-        builder.addWidget(new RecipeIR.WidgetDescriptor(
-                RecipeIR.WidgetType.TEXT, 0, 60, 130, 10,
+        builder.addWidget(new WidgetDescriptor(
+                WidgetType.TEXT, 0, 60, 130, 10,
                 Map.of("text", "Water: " + recipe.waterNeed + " mB (-" + recipe.waterConsume + "/op)", "color", 0x4444FF)));
-        builder.addWidget(new RecipeIR.WidgetDescriptor(
-                RecipeIR.WidgetType.TEXT, 0, 72, 130, 10,
+        builder.addWidget(new WidgetDescriptor(
+                WidgetType.TEXT, 0, 72, 130, 10,
                 Map.of("text", "Lava: " + recipe.lavaNeed + " mB (-" + recipe.lavaConsume + "/op)", "color", 0xFF4444)));
 
         return builder.build();
@@ -284,7 +355,6 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
     private RecipeIR translateMachineProduce(MachineProduceWrapper recipe) {
         var blockId = BuiltInRegistries.BLOCK.getKey(recipe.getBlock());
         var hash = System.identityHashCode(recipe);
-        // 分类 key 改为方块路径，例如 industrialforegoing:latex_processing
         var categoryKey = blockId != null ? blockId.getNamespace() + ":" + blockId.getPath() : "industrialforegoing:machine_produce";
         var builder = RecipeIR.builder()
                 .id("industrialforegoing:/" + (blockId != null ? blockId.getPath() : "machine_produce") + "/" + hash)
@@ -292,64 +362,46 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
                 .categoryKey(categoryKey);
 
         if (blockId != null) {
-            builder.addCatalyst(new RecipeIR.IngredientSlot(List.of(
-                    new RecipeIR.EmiIngredientWrapper(blockId.getNamespace(), blockId.getPath(), 1))));
-            // 获取机器显示名：优先 item 名，fallback 到 block 名
-            String machineName;
+            builder.addCatalyst(new IngredientSlot(List.of(
+                    new EmiIngredientWrapper(blockId.getNamespace(), blockId.getPath(), 1))));
             var blockItem = recipe.getBlock().asItem();
-            if (blockItem != net.minecraft.world.item.Items.AIR) {
-                machineName = blockItem.getName(new ItemStack(blockItem)).getString();
-            } else {
-                machineName = recipe.getBlock().getName().getString();
-            }
-            // 追加产出物描述区分同名机器（如屠宰厂→肉 vs 屠宰厂→粉色史莱姆）
-            String outputDesc = null;
+            String machineDescId = blockItem != net.minecraft.world.item.Items.AIR
+                    ? blockItem.getDescriptionId()
+                    : recipe.getBlock().getDescriptionId();
+            String outputDescId = null;
             if (recipe.getOutputItem() != null && !recipe.getOutputItem().isEmpty()) {
                 var stacks = recipe.getOutputItem().getItems();
-                if (stacks.length == 1) {
-                    outputDesc = stacks[0].getDisplayName().getString();
-                } else if (stacks.length > 1) {
-                    outputDesc = stacks[0].getDisplayName().getString() + " +" + (stacks.length - 1);
+                if (stacks.length > 0) {
+                    outputDescId = stacks[0].getDescriptionId();
                 }
             } else if (!recipe.getOutputFluid().isEmpty()) {
-                outputDesc = recipe.getOutputFluid().getHoverName().getString();
+                outputDescId = recipe.getOutputFluid().getFluid().getFluidType().getDescriptionId();
             }
-            if (outputDesc != null) {
-                builder.displayName(machineName + " → " + outputDesc);
-                LOGGER.debug("translateMachineProduce: machine={}, displayName='{} → {}'",
-                        blockId.getPath(), machineName, outputDesc);
+            if (outputDescId != null) {
+                builder.displayNameTranslationKey("recipe.emibridge_if.machine_produce",
+                        List.of(machineDescId, outputDescId));
             } else {
-                builder.displayName(machineName);
-                LOGGER.debug("translateMachineProduce: machine={}, displayName='{}' (no output desc)", blockId.getPath(), machineName);
+                builder.displayNameTranslationKey("recipe.emibridge_if.machine_produce.single",
+                        List.of(machineDescId));
             }
         }
 
         if (recipe.getOutputItem() != null && !recipe.getOutputItem().isEmpty()) {
             var stacks = recipe.getOutputItem().getItems();
-            LOGGER.debug("translateMachineProduce: {} item output stacks from tag expansion", stacks.length);
-            var wrappers = new ArrayList<RecipeIR.EmiIngredientWrapper>();
+            var wrappers = new ArrayList<EmiIngredientWrapper>();
             for (var stack : stacks) {
                 var wrapper = toWrapper(stack);
                 if (wrapper != null) {
                     wrappers.add(wrapper);
-                } else {
-                    LOGGER.trace("translateMachineProduce: failed to wrap item stack {}", stack.getDisplayName().getString());
                 }
             }
             if (!wrappers.isEmpty()) {
-                builder.addOutput(new RecipeIR.IngredientSlot(wrappers));
-                LOGGER.debug("translateMachineProduce: added {} item outputs (no tag cycling)", wrappers.size());
-            } else {
-                LOGGER.warn("translateMachineProduce: output item tag expanded to 0 wrappers");
+                builder.addOutput(new IngredientSlot(wrappers));
             }
         }
 
         if (!recipe.getOutputFluid().isEmpty()) {
-            var fluidId = BuiltInRegistries.FLUID.getKey(recipe.getOutputFluid().getFluid());
-            LOGGER.debug("translateMachineProduce: fluid output {} x {} mB", fluidId, recipe.getOutputFluid().getAmount());
             addFluidOutput(builder, recipe.getOutputFluid());
-        } else {
-            LOGGER.trace("translateMachineProduce: no fluid output");
         }
 
         return builder.build();
@@ -359,7 +411,6 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
 
     private static RecipeIR.Builder baseBuilder(String category, Object recipe) {
         var hasher = System.identityHashCode(recipe);
-        LOGGER.trace("baseBuilder: category={}, identityHash={}", category, hasher);
         return RecipeIR.builder()
                 .id("industrialforegoing:/" + category + "/" + hasher)
                 .sourceMod(MOD_ID)
@@ -367,135 +418,85 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
     }
 
     private static void addCatalyst(RecipeIR.Builder builder, String machinePath) {
-        LOGGER.trace("addCatalyst: machine={}", machinePath);
-        builder.addCatalyst(new RecipeIR.IngredientSlot(List.of(
-                new RecipeIR.EmiIngredientWrapper(MOD_ID, machinePath, 1))));
+        builder.addCatalyst(new IngredientSlot(List.of(
+                new EmiIngredientWrapper(MOD_ID, machinePath, 1))));
     }
 
-    private static void addTagInput(RecipeIR.Builder builder, net.minecraft.resources.ResourceLocation loc) {
-        LOGGER.trace("addTagInput: tag={}", loc);
-        builder.addInput(new RecipeIR.IngredientSlot(List.of(
-                new RecipeIR.EmiIngredientWrapper(loc.getNamespace(), loc.getPath(), 1))));
+    private static void addTagInput(RecipeIR.Builder builder, ResourceLocation loc) {
+        builder.addInput(new IngredientSlot(List.of(
+                new EmiIngredientWrapper(loc.getNamespace(), loc.getPath(), 1))));
     }
 
     private void addIngredientInput(RecipeIR.Builder builder, Ingredient ingredient) {
-        if (ingredient == null || ingredient.isEmpty()) {
-            LOGGER.trace("addIngredientInput: null or empty ingredient");
-            return;
-        }
+        if (ingredient == null || ingredient.isEmpty()) return;
         var wrappers = flattenIngredient(ingredient);
         if (!wrappers.isEmpty()) {
-            builder.addInput(new RecipeIR.IngredientSlot(wrappers));
-            LOGGER.trace("addIngredientInput: added {} alternatives", wrappers.size());
-        } else {
-            LOGGER.debug("addIngredientInput: ingredient expanded to 0 wrappers");
+            builder.addInput(new IngredientSlot(wrappers));
         }
     }
 
     private void addSizedIngredientOutput(RecipeIR.Builder builder, SizedIngredient sized) {
-        if (sized == null || sized.ingredient().isEmpty()) {
-            LOGGER.trace("addSizedIngredientOutput: null or empty sized ingredient");
-            return;
-        }
-        var wrappers = new ArrayList<RecipeIR.EmiIngredientWrapper>();
+        if (sized == null || sized.ingredient().isEmpty()) return;
+        var wrappers = new ArrayList<EmiIngredientWrapper>();
         for (var stack : sized.ingredient().getItems()) {
             var id = stack.getItemHolder().unwrapKey()
                     .map(key -> key.location()).orElse(null);
             if (id != null) {
-                wrappers.add(new RecipeIR.EmiIngredientWrapper(
+                wrappers.add(new EmiIngredientWrapper(
                         id.getNamespace(), id.getPath(), sized.count()));
-            } else {
-                LOGGER.trace("addSizedIngredientOutput: unwrapKey failed for item in sized ingredient");
             }
         }
         if (!wrappers.isEmpty()) {
-            builder.addOutput(new RecipeIR.IngredientSlot(wrappers));
-            LOGGER.trace("addSizedIngredientOutput: added {} outputs", wrappers.size());
-        } else {
-            LOGGER.debug("addSizedIngredientOutput: sized ingredient expanded to 0 wrappers");
+            builder.addOutput(new IngredientSlot(wrappers));
         }
     }
 
     private static void addSizedFluidInput(RecipeIR.Builder builder, net.neoforged.neoforge.fluids.crafting.SizedFluidIngredient sized) {
-        if (sized == null || sized.ingredient().isEmpty()) {
-            LOGGER.trace("addSizedFluidInput: null or empty sized fluid");
-            return;
-        }
+        if (sized == null || sized.ingredient().isEmpty()) return;
         var stacks = sized.getFluids();
-        if (stacks == null || stacks.length == 0 || stacks[0].isEmpty()) {
-            LOGGER.trace("addSizedFluidInput: no fluid stacks resolved");
-            return;
-        }
+        if (stacks == null || stacks.length == 0 || stacks[0].isEmpty()) return;
         var loc = BuiltInRegistries.FLUID.getKey(stacks[0].getFluid());
         if (loc != null) {
-            builder.addFluidInput(new RecipeIR.FluidSlot(
-                    new RecipeIR.FluidStackWrapper(loc.getNamespace(), loc.getPath(),
+            builder.addFluidInput(new FluidSlot(
+                    new FluidStackWrapper(loc.getNamespace(), loc.getPath(),
                             stacks[0].getAmount()), 1.0f));
-            LOGGER.trace("addSizedFluidInput: {} x {} mB", loc, stacks[0].getAmount());
-        } else {
-            LOGGER.debug("addSizedFluidInput: fluid not found in registry");
         }
     }
 
     private static void addSizedFluidOutput(RecipeIR.Builder builder, net.neoforged.neoforge.fluids.crafting.SizedFluidIngredient sized) {
-        if (sized == null || sized.ingredient().isEmpty()) {
-            LOGGER.trace("addSizedFluidOutput: null or empty sized fluid");
-            return;
-        }
+        if (sized == null || sized.ingredient().isEmpty()) return;
         var stacks = sized.getFluids();
-        if (stacks == null || stacks.length == 0 || stacks[0].isEmpty()) {
-            LOGGER.trace("addSizedFluidOutput: no fluid stacks resolved");
-            return;
-        }
+        if (stacks == null || stacks.length == 0 || stacks[0].isEmpty()) return;
         var loc = BuiltInRegistries.FLUID.getKey(stacks[0].getFluid());
         if (loc != null) {
-            builder.addFluidOutput(new RecipeIR.FluidSlot(
-                    new RecipeIR.FluidStackWrapper(loc.getNamespace(), loc.getPath(),
+            builder.addFluidOutput(new FluidSlot(
+                    new FluidStackWrapper(loc.getNamespace(), loc.getPath(),
                             stacks[0].getAmount()), 1.0f));
-            LOGGER.trace("addSizedFluidOutput: {} x {} mB", loc, stacks[0].getAmount());
-        } else {
-            LOGGER.debug("addSizedFluidOutput: fluid not found in registry");
         }
     }
 
     private static void addFluidInput(RecipeIR.Builder builder, FluidStack fluid) {
-        if (fluid == null || fluid.isEmpty()) {
-            LOGGER.trace("addFluidInput: null or empty fluid");
-            return;
-        }
+        if (fluid == null || fluid.isEmpty()) return;
         var loc = BuiltInRegistries.FLUID.getKey(fluid.getFluid());
         if (loc != null) {
-            builder.addFluidInput(new RecipeIR.FluidSlot(
-                    new RecipeIR.FluidStackWrapper(loc.getNamespace(), loc.getPath(),
+            builder.addFluidInput(new FluidSlot(
+                    new FluidStackWrapper(loc.getNamespace(), loc.getPath(),
                             fluid.getAmount()), 1.0f));
-            LOGGER.trace("addFluidInput: {} x {} mB", loc, fluid.getAmount());
-        } else {
-            LOGGER.debug("addFluidInput: fluid not found in registry: {}", fluid.getFluid());
         }
     }
 
     private static void addFluidOutput(RecipeIR.Builder builder, FluidStack fluid) {
-        if (fluid == null || fluid.isEmpty()) {
-            LOGGER.trace("addFluidOutput: null or empty fluid");
-            return;
-        }
+        if (fluid == null || fluid.isEmpty()) return;
         var loc = BuiltInRegistries.FLUID.getKey(fluid.getFluid());
         if (loc != null) {
-            builder.addFluidOutput(new RecipeIR.FluidSlot(
-                    new RecipeIR.FluidStackWrapper(loc.getNamespace(), loc.getPath(),
+            builder.addFluidOutput(new FluidSlot(
+                    new FluidStackWrapper(loc.getNamespace(), loc.getPath(),
                             fluid.getAmount()), 1.0f));
-            LOGGER.trace("addFluidOutput: {} x {} mB", loc, fluid.getAmount());
-        } else {
-            LOGGER.debug("addFluidOutput: fluid not found in registry: {}", fluid.getFluid());
         }
     }
 
     private static void addRarityWidgets(RecipeIR.Builder builder, List<LaserDrillRarity> rarities) {
-        if (rarities == null || rarities.isEmpty()) {
-            LOGGER.trace("addRarityWidgets: no rarities");
-            return;
-        }
-        LOGGER.trace("addRarityWidgets: {} rarities", rarities.size());
+        if (rarities == null || rarities.isEmpty()) return;
         int y = 60;
         for (int i = 0; i < Math.min(rarities.size(), 4); i++) {
             var r = rarities.get(i);
@@ -503,27 +504,22 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
                     + " W:" + r.weight()
                     + dimTagStr(r.dimensionRarity())
                     + biomeTagStr(r.biomeRarity());
-            builder.addWidget(new RecipeIR.WidgetDescriptor(
-                    RecipeIR.WidgetType.TEXT, 0, y, 155, 10,
+            builder.addWidget(new WidgetDescriptor(
+                    WidgetType.TEXT, 0, y, 155, 10,
                     Map.of("text", info, "color", 0xAAAAAA)));
-            LOGGER.trace("addRarityWidgets[{}]: {}", i, info);
             y += 10;
         }
     }
 
     private static void addEntityWidget(RecipeIR.Builder builder, Optional<EntityData> entityData) {
-        if (entityData == null || entityData.isEmpty()) {
-            LOGGER.trace("addEntityWidget: no entity data");
-            return;
-        }
+        if (entityData == null || entityData.isEmpty()) return;
         var entity = entityData.get().getEntity();
         var name = entity.isTag()
                 ? "#" + entity.tag().location()
                 : entity.getType().getDescription().getString();
-        builder.addWidget(new RecipeIR.WidgetDescriptor(
-                RecipeIR.WidgetType.TEXT, 0, 52, 120, 10,
+        builder.addWidget(new WidgetDescriptor(
+                WidgetType.TEXT, 0, 52, 120, 10,
                 Map.of("text", "Over: " + name, "color", 0xFFAA00)));
-        LOGGER.trace("addEntityWidget: {}", name);
     }
 
     private static String dimTagStr(LaserDrillRarity.DimensionRarity dim) {
@@ -546,40 +542,29 @@ public class IndustrialForegoingAdapter implements IRecipeAdapter<Object> {
         return "";
     }
 
-    private List<RecipeIR.EmiIngredientWrapper> flattenIngredient(Ingredient ingredient) {
-        var result = new ArrayList<RecipeIR.EmiIngredientWrapper>();
+    private List<EmiIngredientWrapper> flattenIngredient(Ingredient ingredient) {
+        var result = new ArrayList<EmiIngredientWrapper>();
         for (var stack : ingredient.getItems()) {
             var wrapper = toWrapper(stack);
             if (wrapper != null) {
                 result.add(wrapper);
-            } else {
-                LOGGER.trace("flattenIngredient: failed to wrap {}", stack.getDisplayName().getString());
             }
-        }
-        if (result.isEmpty()) {
-            LOGGER.debug("flattenIngredient: ingredient expanded to 0 wrappers");
         }
         return result;
     }
 
-    private static RecipeIR.IngredientSlot toSlot(ItemStack stack) {
+    private static IngredientSlot toSlot(ItemStack stack) {
         var wrapper = toWrapper(stack);
-        if (wrapper == null) {
-            LOGGER.trace("toSlot: null wrapper for {}", stack.getDisplayName().getString());
-            return null;
-        }
-        return new RecipeIR.IngredientSlot(List.of(wrapper));
+        if (wrapper == null) return null;
+        return new IngredientSlot(List.of(wrapper));
     }
 
-    private static RecipeIR.EmiIngredientWrapper toWrapper(ItemStack stack) {
+    private static EmiIngredientWrapper toWrapper(ItemStack stack) {
         var id = stack.getItemHolder().unwrapKey()
                 .map(key -> key.location())
                 .orElse(null);
-        if (id == null) {
-            LOGGER.trace("toWrapper: unwrapKey returned null for stack {}", stack.getDisplayName().getString());
-            return null;
-        }
-        return new RecipeIR.EmiIngredientWrapper(
+        if (id == null) return null;
+        return new EmiIngredientWrapper(
                 id.getNamespace(), id.getPath(), stack.getCount());
     }
 }

@@ -65,6 +65,10 @@ dependencies {
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
     runtimeOnly "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
 
+    // EmiBridge core (loaded as mod from run/mods/ or mods folder)
+    compileOnly "com.chatterjay:EmiBridge:1.0-SNAPSHOT"
+
+    // Industrial Foregoing + Titanium jar (no maven available)
     compileOnly fileTree(dir: 'libs', include: '*.jar')
 }
 

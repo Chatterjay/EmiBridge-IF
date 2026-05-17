@@ -1,0 +1,14 @@
+{
+  "patterns": [
+    "/fluid_extractor",
+    "/stone_work",
+    "/dissolution",
+    "/laser_ore",
+    "/stone_work_generator",
+    "/laser_fluid",
+    "/bioreactor",
+    "/fluid_sieving_machine",
+    "/fermentation_station",
+    "/washing_factory"
+  ]
+}
