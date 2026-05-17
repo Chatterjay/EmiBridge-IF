@@ -25,6 +25,18 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
+      - name: Checkout and publish EmiBridge to local Maven
+        uses: actions/checkout@v4
+        with:
+          repository: Chatterjay/EmiBridge
+          path: EmiBridge
+
+      - name: Build EmiBridge
+        working-directory: EmiBridge
+        run: |
+          chmod +x gradlew
+          ./gradlew publishToMavenLocal
+
       - name: Build
         run: ./gradlew build
 
@@ -54,6 +66,18 @@ jobs:
 
       - name: Make gradlew executable
         run: chmod +x gradlew
+
+      - name: Checkout and publish EmiBridge to local Maven
+        uses: actions/checkout@v4
+        with:
+          repository: Chatterjay/EmiBridge
+          path: EmiBridge
+
+      - name: Build EmiBridge
+        working-directory: EmiBridge
+        run: |
+          chmod +x gradlew
+          ./gradlew publishToMavenLocal
 
       - name: Build Release
         run: ./gradlew build -Pmod_version=${GITHUB_REF_NAME#v}
